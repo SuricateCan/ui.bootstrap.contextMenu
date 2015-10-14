@@ -10,7 +10,39 @@ AngularJS UI Bootstrap Module for adding context menus to elements. [Demo](http:
 
 Add a reference to `contextMenu.js`. In your app config add `ui.bootstrap.contextMenu` as a dependency module.
 
-### View
+There are two ways of setting up a context menu: by template or by options.
+
+### By Template
+
+To setup the context by a html template, you need to provide an `<ul>` with the attribute `context-menu-template`.The value of this attribute is a string to identify the context-menu owning it.
+
+```html
+<div>
+    <div ng-repeat="item in items" context-menu="custom">Right Click: {{item.name}}</div>
+    <ul context-menu-template="custom">
+      <li><a ng-click="select(item)">Select</a></li>
+      <li class="divider"></li>
+      <li><a ng-click="remove(item)">Remove</a></li>
+    </ul>
+</div>
+<div ng-bind="selected"></div>
+```
+
+You can use ngClick, ngDisabled and all ngRepeat scope functions.
+
+```js
+$scope.selected = 'None';
+$scope.select = function(item){
+  $scope.selected = $itemScope.item.name;
+};
+$scope.remove = function(item){
+  $scope.items.splice($scope.items.indexOf(item), 1);
+};
+```
+
+### By Menu Options
+
+To setup the context by menu options you need to provide an object model that defines the context.
 
 ```html
 <div>
@@ -19,7 +51,9 @@ Add a reference to `contextMenu.js`. In your app config add `ui.bootstrap.contex
 <div ng-bind="selected"></div>
 ```
 
-### Controller
+A menu options model can be a `contextMenuBuilder`, an `Array`, or a `Function` returning one of those.
+An empty `contextMenuBuilder` or `Array` will not display a context menu.
+The following uses the `contextMenuBuilder` to provide the context definition.
 
 ```js
 $scope.selected = 'None';
@@ -39,11 +73,6 @@ builder.newMenuItem('Remove', function ($itemScope) {
 
 $scope.menuOptions = builder;
 ```
-
-## Menu Options
-
-A menu options model can be a `contextMenuBuilder`, an `Array`, or a `Function` returning one of those.
-An empty `contextMenuBuilder` or `Array` will not display a context menu.
 
 ### Menu Options as `Function`
 
