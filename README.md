@@ -20,18 +20,23 @@ To setup the context by a html template, you need to provide an `<ul>` with the 
 <div>
     <div ng-repeat="item in items" context-menu="custom">Right Click: {{item.name}}</div>
     <ul context-menu-template="custom">
-      <li><a ng-click="select(item)">Select</a></li>
+      <li><i class="fa fa-check"></i><a ng-click="select(item)">Select</a></li>
       <li class="divider"></li>
-      <li><a ng-click="remove(item)">Remove</a></li>
+      <li ng-class="{'disabled':item.otherProperty!='Foo'}"><a ng-click="item.otherProperty!='Foo' || remove(item)">Remove</a></li>
     </ul>
 </div>
 <div ng-bind="selected"></div>
 ```
-
-You can use ngClick, ngDisabled and all ngRepeat scope functions.
+`ngDisabled` does not work with `a`, so if you want to use it you'll need to replace the `a` with `button` and style it accordingly.
+Above we used lazy evaluation to prevent the click behaviour when disabled.
+You can use ngClick and all ngRepeat scope functions.
 
 ```js
 $scope.selected = 'None';
+$scope.items = [
+    { name: 'John', otherProperty: 'Foo' },
+    { name: 'Joe', otherProperty: 'Bar' }
+};
 $scope.select = function(item){
   $scope.selected = $itemScope.item.name;
 };

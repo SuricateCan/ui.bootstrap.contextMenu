@@ -132,66 +132,34 @@ angular.module('ui.bootstrap.contextMenu', [])
         return new contextMenuBuilder();
     };
 })
-.directive('contextMenu', ["$compile", "$rootElement", function ($compile, $rootElement) {
-    return {
-        restrict: 'A',
-        priority: 1001,//we must run our compile before ngRepeat for this to work
-        controller: function () {
-            var self = this;
-            //hold the template link function
-            self.fnTemplateLink = null;
-            //hold the options expression
-            self.optionsExpr = null;
-            //hold the model expresion
-            self.modelExpr = null;
-            //hold the event expressions
-            self.openingExpr = null;
-            self.openExpr = null;
-            self.closeExpr = null;
-        },
-        compile: function ($element, $attrs) {
-            //get the template view related to our context and remove it
-            var $tmpl = $rootElement.find('[context-menu-template="' + $attrs.contextMenu + '"]').remove();
-
-            //if a template was provided
-            if ($tmpl.length > 0) {
-                if (!$tmpl.is("ul")) throw "context-menu-template must be a <ul>";
-            }
-            else if (!$attrs.contextMenu) {
-                throw "context-menu needs a context-menu-template child or its options set";
-            }
-
-            //remove ourselves
-            $element.remove("context-menu");
-            //add our run directive that will execute on each ngRepeat element
-            $element.attr("context-menu-run", $attrs.contextMenu);
-
-            //return our link function
-            return function ($scope, $elem, $att, $controller) {
-                //fill our controller properties
-                $controller.optionsExpr = $attrs.contextMenu;
-                $controller.modelExpr = $attrs.model;
-                $controller.openingExpr = $attrs.opening;
-                $controller.openExpr = $attrs.open;
-                $controller.closeExpr = $attrs.close;
-                if ($tmpl.length > 0) {
-                    $controller.fnTemplateLink = $compile($tmpl);
-                }
-                $scope.$on("$destroy", function () {
-                    //clear references
-                    $controller.optionsExpr = null;
-                    $controller.modelExpr = null;
-                    $controller.openingExpr = null;
-                    $controller.openExpr = null;
-                    $controller.fnTemplateLink = null;
-                    $controller = null;
-                });
-            }
-        }
-    }
-}])
-.directive('contextMenuRun', ["$timeout", "$q", function ($timeout, $q) {
+.service('_contextMenuWorker', ["$q", "$timeout", function ($q, $timeout) {
+    var self = this;
     if (!$) { var $ = angular.element; }
+    var callMenuItemClick = function (itemdef, $scope, $event, model) {
+        itemdef.click.call($scope, $scope, $event, model);
+    };
+    var callMenuItemClose = function ($scope, $ctrl) {
+        $timeout(function () {
+            $scope.$eval($ctrl.closeExpr);
+        });
+    };
+    var callMenuItemOpen = function ($scope, $ctrl) {
+        $timeout(function () {
+            $scope.$eval($ctrl.openExpr);
+        });
+    };
+    var callMenuItemOpening = function ($scope, $ctrl) {
+        return $ctrl.openingExpr ? $scope.$eval($ctrl.openingExpr) : true;
+    };
+    var liClickHandler = function ($scope, $e, $event, $contextMenu, $ctrl, model, itemdef, callClick) {
+        $e.preventDefault();
+        $scope.$apply(function () {
+            $($event.currentTarget).removeClass('context');
+            $contextMenu.remove();
+            if (callClick) callMenuItemClick(itemdef, $scope, $event, model);
+            callMenuItemClose($scope, $ctrl);
+        });
+    };
     var renderMenuItem = function ($contextMenu, $scope, $event, item, model, $ctrl) {
         var itemdef = item;
         //LEGACY: convert the array into a contextMenuItem mirror
@@ -222,21 +190,10 @@ angular.module('ui.bootstrap.contextMenu', [])
         var $li = $('<li>').append($a);
         //check the enabled function
         var enabled = angular.isFunction(itemdef.enabled) ? itemdef.enabled.call($scope, $scope, $event, text, model) : itemdef.enabled;
-        if (enabled) {
-            $li.on('click', function (e) {
-                e.preventDefault();
-                $scope.$apply(function () {
-                    $($event.currentTarget).removeClass('context');
-                    $contextMenu.remove();
-                    itemdef.click.call($scope, $scope, $event, model);
-                    //call the close function
-                    $timeout(function () { $scope.$eval($ctrl.closeExpr); });
-                });
-            });
-        } else {
-            //disable and prevent propagation
-            $li.addClass('disabled').on('click', function (e) { e.preventDefault(); });
-        }
+        $li.on('click', function (e) {
+            liClickHandler($scope, e, $event, $contextMenu, $ctrl, model, itemdef, enabled);
+        });
+        if (!enabled) $li.addClass('disabled');
         return $li;
     };
     var renderContextMenu = function ($scope, $event, options, model, $ctrl) {
@@ -250,13 +207,7 @@ angular.module('ui.bootstrap.contextMenu', [])
                 $ul = clone;
             });
             $ul.find('li').on('click', function (e) {
-                e.preventDefault();
-                $scope.$apply(function () {
-                    $($event.currentTarget).removeClass('context');
-                    $contextMenu.remove();
-                    //call the close function
-                    $timeout(function () { $scope.$eval($ctrl.closeExpr); });
-                });
+                liClickHandler($scope, e, $event, $contextMenu, $ctrl, model, null, false);
             });
         } else {
             //create the ul and build the list
@@ -314,40 +265,105 @@ angular.module('ui.bootstrap.contextMenu', [])
             $timeout(function () { $scope.$eval($ctrl.closeExpr); });
         });
     };
+    self.bindContextMenu = function ($scope, $element, $attrs, $controller) {
+        //context menu event
+        $element.on('contextmenu', function ($event) {
+            //only our context must open
+            $event.stopPropagation();
+            $scope.$apply(function () {
+                $event.preventDefault();
+                //get the scope's options and model
+                var options = $scope.$eval($controller.optionsExpr);
+                var model = $scope.$eval($controller.modelExpr);
+                //work the options, if builder
+                if (angular.isFunction(options._toArray)) {
+                    options = options._toArray();
+                }
+                //builder delivers an array
+                if (options instanceof Array) {
+                    var open = callMenuItemOpening($scope, $controller);
+                    //check if we will open or not
+                    if (options.length === 0 || !open) {
+                        return;
+                    }
+                    //render the menu
+                    renderContextMenu($scope, $event, options, model, $controller);
+                    callMenuItemOpen($scope, $controller);
+                } else {
+                    throw '"' + $controller.optionsExpr + '" is not an array nor a contextMenuBuilder';
+                }
+            });
+        });
+    };
+}])
+.directive('contextMenu', ["$compile", "$rootElement", "_contextMenuWorker", function ($compile, $rootElement, _contextMenuWorker) {
+    return {
+        restrict: 'A',
+        priority: 1001,//we must run our compile before ngRepeat for this to work
+        controller: function () {
+            var self = this;
+            //hold the template link function
+            self.fnTemplateLink = null;
+            //hold the options expression
+            self.optionsExpr = null;
+            //hold the model expresion
+            self.modelExpr = null;
+            //hold the event expressions
+            self.openingExpr = null;
+            self.openExpr = null;
+            self.closeExpr = null;
+        },
+        compile: function ($element, $attrs) {
+            //get the template view related to our context and remove it
+            var $tmpl = $rootElement.find('[context-menu-template="' + $attrs.contextMenu + '"]').remove();
+            var useTemplate = $tmpl.length > 0;
+            //if a template was provided
+            if (useTemplate) {
+                if (!$tmpl.is("ul")) throw "context-menu-template must be a <ul>";
+            }
+            else if (!$attrs.contextMenu) {
+                throw "context-menu needs a context-menu-template child or its options set";
+            }
+
+            //remove ourselves
+            $element.remove("context-menu");
+            //add our run directive that will execute on each ngRepeat element
+            $element.attr("context-menu-run", "");
+
+            //return our link function
+            return function ($scope, $elem, $att, $controller) {
+                //fill our controller properties
+                $controller.optionsExpr = $attrs.contextMenu;
+                $controller.modelExpr = $attrs.model;
+                $controller.openingExpr = $attrs.opening;
+                $controller.openExpr = $attrs.open;
+                $controller.closeExpr = $attrs.close;
+                if (useTemplate) {
+                    $controller.fnTemplateLink = $compile($tmpl);
+                } else {
+                    //no template, bind now
+                    _contextMenuWorker.bindContextMenu($scope, $elem, $att, $controller);
+                }
+                $scope.$on("$destroy", function () {
+                    //clear references
+                    $controller.optionsExpr = null;
+                    $controller.modelExpr = null;
+                    $controller.openingExpr = null;
+                    $controller.openExpr = null;
+                    $controller.fnTemplateLink = null;
+                    $controller = null;
+                });
+            }
+        }
+    }
+}])
+.directive('contextMenuRun', ["$timeout", "$q", "_contextMenuWorker", function ($timeout, $q, _contextMenuWorker) {
     return {
         restrict: 'A',
         priority: 999,//to run after the item scope has been created
         require: 'contextMenu',
         link: function ($scope, $element, $attrs, $controller) {
-            //context menu event
-            $element.on('contextmenu', function ($event) {
-                //only our context must open
-                $event.stopPropagation();
-                $scope.$apply(function () {
-                    $event.preventDefault();
-                    //get the scope's options and model
-                    var options = $scope.$eval($controller.optionsExpr);
-                    var model = $scope.$eval($controller.modelExpr);
-                    //work the options, if builder
-                    if (angular.isFunction(options._toArray)) {
-                        options = options._toArray();
-                    }
-                    //builder delivers an array
-                    if (options instanceof Array) {
-                        var open = $controller.openingExpr ? $scope.$eval($controller.openingExpr) : true;
-                        //check if we will open or not
-                        if (options.length === 0 || !open) {
-                            return;
-                        }
-                        //render the menu
-                        renderContextMenu($scope, $event, options, model, $controller);
-                        //call the after open function
-                        $timeout(function () { $scope.$eval($controller.openExpr); });
-                    } else {
-                        throw '"' + $controller.optionsExpr + '" is not an array nor a contextMenuBuilder';
-                    }
-                });
-            });
+            _contextMenuWorker.bindContextMenu($scope, $element, $attrs, $controller);
         }
     }
 }]);
