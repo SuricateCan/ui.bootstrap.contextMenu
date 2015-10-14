@@ -324,12 +324,10 @@ angular.module('ui.bootstrap.contextMenu', [])
             else if (!$attrs.contextMenu) {
                 throw "context-menu needs a context-menu-template child or its options set";
             }
-
             //remove ourselves
-            $element.remove("context-menu");
+            $element.removeAttr("context-menu");
             //add our run directive that will execute on each ngRepeat element
             $element.attr("context-menu-run", "");
-
             //return our link function
             return function ($scope, $elem, $att, $controller) {
                 //fill our controller properties
