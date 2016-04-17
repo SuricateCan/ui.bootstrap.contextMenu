@@ -275,15 +275,16 @@ angular.module('ui.bootstrap.contextMenu', [])
                 //get the scope's options and model
                 var options = $scope.$eval($controller.optionsExpr);
                 var model = $scope.$eval($controller.modelExpr);
+                var useTemplate = $controller.fnTemplateLink;
                 //work the options, if builder
-                if (angular.isFunction(options._toArray)) {
+                if (!useTemplate && angular.isFunction(options._toArray)) {
                     options = options._toArray();
                 }
                 //builder delivers an array
-                if (options instanceof Array) {
+                if (useTemplate || options instanceof Array) {
                     var open = callMenuItemOpening($scope, $controller);
                     //check if we will open or not
-                    if (options.length === 0 || !open) {
+                    if (!useTemplate && (options.length === 0 || !open)) {
                         return;
                     }
                     //render the menu
